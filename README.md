@@ -1,7 +1,5 @@
 # TouchOSC Accelerometer Data to p5js
 
-*Note that this README matches the initial commit, which doesn't do anything with WebSockets yet.*
-
 ## Description
 
 oscxyz is a simple OSC-to-WebSockets bridge that takes OSC messages from a client, like [TouchOSC](https://hexler.net/touchosc), and sends them to a WebSocket client, like a p5js sketch.
@@ -12,11 +10,11 @@ Note that this implementation is very basic and was created specifically to hand
 
 ```mermaid
 sequenceDiagram
-TouchOSC-->>oscxyz-ws: TCP connection 
-p5.js-->>oscxyz-ws: WebSockets connection 
+TouchOSC-->>oscxyz: TCP connection 
+p5.js-->>oscxyz: WebSockets connection 
 loop 
-  TouchOSC->>oscxyz-ws: OSC /accxyz messages
-  oscxyz-ws->>p5.js: x,y,z strings
+  TouchOSC->>oscxyz: OSC /accxyz message
+  oscxyz->>p5.js: x,y,z string
 end
 ```
 
@@ -35,14 +33,15 @@ Flags:
       --oschost string   IP address to use when creating the OSC server (required)
       --oscport int      Port number to use when creating the OSC server (required)
       --pattern string   OSC message pattern to listen for (default "/accxyz")
-  -q, --quiet            Don't show OSC messages on the console  
+  -q, --quiet            Don't show OSC messages on the console
+  -v, --values           Only send the values of the OSC message
       --wsport int       Port number to use when creating the WebSockets server (required)
 ```
 
 For example:
 
 ```console
-oscxyz -oschost=192.168.4.20 --oscport=8000 --wsport=8080
+oscxyz -oschost=192.168.4.20 --oscport=8000 --wsport=8080 --values
 ```
 
 ### On Your Phone
@@ -51,4 +50,13 @@ oscxyz -oschost=192.168.4.20 --oscport=8000 --wsport=8080
 2. In Settings, touch "OSC" and enter the host IP address and port (outgoing) using the values you typed in the terminal
 3. Also in Settings, touch "Options" and turn on "Accelerometer (/accxyz)"
 
-You should start seeing the accelerometer OSC messages appear in the terminal window where oscxyz is running.
+You should start seeing the accelerometer OSC messages appear in the terminal window where oscxyz is running (unless you used the `--quiet` flag).
+
+## Examples
+
+Look at this [separate repo](https://github.com/rahji/oscxyz_clientdemos) for some p5.js examples.
+
+## Issues
+
+* This currently only works with TouchOSC, I think. This is because it's the only phone app that I've seen that includes all three axes in one OSC message. I will update this tool to work with other apps (like [MultiSense Osc](https://play.google.com/store/apps/details?id=edu.polytechnique.multisense.release&hl=en_US&gl=US)), but I'm hesitant to go too far since I intend to make a more comprehensive OSC tool with many more options - probably this summer.
+* oscxyz doesn't handle OSC bundles - only messages.
