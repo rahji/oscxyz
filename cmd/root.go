@@ -18,8 +18,12 @@ package cmd
 
 import (
 	"fmt"
+	"net/http"
 	"os"
+	"strings"
 
+	"github.com/gobwas/ws"
+	"github.com/gobwas/ws/wsutil"
 	"github.com/hypebeast/go-osc/osc"
 	"github.com/spf13/cobra"
 )
@@ -28,11 +32,10 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "oscxyz",
 	Short: "An OSC-to-WebSockets bridge",
-	Long: `
-oscxyz is a simple OSC-to-WebSockets bridge that takes OSC messages from 
+	Long: `oscxyz is a simple OSC-to-WebSockets bridge that takes OSC messages from 
 a client, like TouchOSC, and sends them to a WebSocket client, like a p5js sketch.
 
-Note that this implementation is very basic and was created specifically to handle 
+Note that this was created specifically to handle a single OSC message type:
 accelerometer data with an OSC type tag of ",fff" and an address pattern of "/accxyz"
 (although the address pattern can be changed with the --pattern flag).
 `,
@@ -41,11 +44,17 @@ accelerometer data with an OSC type tag of ",fff" and an address pattern of "/ac
 	Run: func(cmd *cobra.Command, args []string) {
 		oschostname, _ := cmd.Flags().GetString("oschost")
 		oscport, _ := cmd.Flags().GetInt("oscport")
-		//websocketsport, _ := cmd.Flags().GetInt("wsport")
+		websocketsport, _ := cmd.Flags().GetInt("wsport")
 		pattern, _ := cmd.Flags().GetString("pattern")
 		quiet, _ := cmd.Flags().GetBool("quiet")
+		values, _ := cmd.Flags().GetBool("values")
 
-		startOSCServer(oschostname, oscport, pattern, quiet)
+		c := make(chan string)
+		go startOSCServer(oschostname, oscport, pattern, values, quiet, c)
+		go startWebSocketsServer(websocketsport, c)
+
+		// keep the program running until a signal is received
+		select {}
 	},
 }
 
@@ -68,16 +77,27 @@ func init() {
 	rootCmd.MarkFlagRequired("wsport")
 
 	rootCmd.Flags().String("pattern", "/accxyz", "OSC message pattern to listen for")
+	rootCmd.Flags().BoolP("values", "v", false, "Only send the values of the OSC message")
 	rootCmd.Flags().BoolP("quiet", "q", false, "Don't show OSC messages on the console")
 }
 
-func startOSCServer(oschostname string, oscport int, pattern string, quiet bool) {
+func startOSCServer(oschostname string, oscport int, pattern string, values bool, quiet bool, c chan string) {
 	addr := fmt.Sprintf("%s:%d", oschostname, oscport)
 
+	fmt.Printf("OSC waiting for connection on %s\n", addr)
 	d := osc.NewStandardDispatcher()
 	d.AddMsgHandler(pattern, func(msg *osc.Message) {
-		if !quiet {
-			osc.PrintMessage(msg)
+		if values {
+			msgSlice := strings.SplitN(msg.String(), " ", 3)
+			c <- msgSlice[2]
+			if !quiet {
+				fmt.Println(msgSlice[2])
+			}
+		} else {
+			c <- msg.String()
+			if !quiet {
+				osc.PrintMessage(msg)
+			}
 		}
 	})
 
@@ -85,9 +105,30 @@ func startOSCServer(oschostname string, oscport int, pattern string, quiet bool)
 		Addr:       addr,
 		Dispatcher: d,
 	}
-	go server.ListenAndServe()
-	fmt.Printf("OSC Server Listening on %s\n", addr)
+	err := server.ListenAndServe()
+	if err != nil {
+		fmt.Println("Error starting OSC server: " + err.Error())
+	}
+}
 
-	// keep the program running until a signal is received
-	select {}
+func startWebSocketsServer(websocketsport int, c chan string) {
+	wsaddr := fmt.Sprintf(":%d", websocketsport)
+	fmt.Println("WebSockets server waiting for connection on " + wsaddr + "")
+	http.ListenAndServe(wsaddr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("WebSockets client connected")
+		conn, _, _, err := ws.UpgradeHTTP(r, w)
+		if err != nil {
+			fmt.Println("Error starting socket server: " + err.Error())
+		}
+		defer conn.Close()
+		for {
+			msg := <-c // wait for a message from the OSC server
+			err = wsutil.WriteServerMessage(conn, ws.OpText, []byte(msg))
+			if err != nil {
+				fmt.Println("Error sending data via WebSocket: " + err.Error())
+				fmt.Println("WebSocket client disconnected")
+				return
+			}
+		}
+	}))
 }
