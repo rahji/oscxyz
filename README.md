@@ -6,6 +6,8 @@ oscxyz is a simple OSC-to-WebSockets bridge that takes OSC messages from a clien
 
 Note that this implementation is very basic and was created specifically to handle accelerometer data with an OSC type tag of ",fff" and an address pattern of "/accxyz" (although the address pattern can be changed with the --pattern flag).
 
+See also [my oscdump utility](https://github.com/rahji/oscdump)
+
 ## Sequence Diagram
 
 ```mermaid
